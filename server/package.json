@@ -1,0 +1,28 @@
+{
+  "name": "maskchat-server",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js",
+    "test": "node --test alerts.test.js index.test.js institutions.test.js logger.test.js observability.test.js oidc.test.js pilot.test.js pilot-ops.test.js postgres.test.js security.regression.test.js store.test.js",
+    "test:unit": "node --test alerts.test.js index.test.js institutions.test.js logger.test.js observability.test.js oidc.test.js pilot.test.js pilot-ops.test.js postgres.test.js security.regression.test.js store.test.js",
+    "loadtest": "node loadtest.js",
+    "test:e2e": "node --test socket.e2e.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1",
+    "pg": "^8.16.3"
+  },
+  "optionalDependencies": {
+    "ioredis": "^5.4.1",
+    "@socket.io/redis-adapter": "^8.3.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}

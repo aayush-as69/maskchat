@@ -1,0 +1,16 @@
+{
+  "name": "maskchat",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Campus-bounded anonymous peer mentorship prototype",
+  "scripts": {
+    "dev": "pnpm start",
+    "build": "pnpm --dir client build",
+    "start": "pnpm build && pnpm --dir server start",
+    "test": "pnpm --dir server test",
+    "test:e2e": "pnpm --dir server test:e2e"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

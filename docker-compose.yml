@@ -1,0 +1,86 @@
+services:
+  maskchat:
+    build:
+      context: .
+      args:
+        VITE_SERVER_URL: ${VITE_SERVER_URL:-}
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      REDIS_URL: redis://redis:6379
+      POSTGRES_URL: postgres://maskchat:${POSTGRES_PASSWORD:-change-me}@postgres:5432/maskchat
+      POSTGRES_SSL: 0
+      REQUIRE_POSTGRES: 1
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:3001}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-change-me-in-production}
+      ALIAS_SECRET: ${ALIAS_SECRET:-change-me-in-production}
+      AUTH_MODE: ${AUTH_MODE:-trusted-token}
+      IDENTITY_VERIFICATION_SECRET: ${IDENTITY_VERIFICATION_SECRET:-change-me-in-production}
+      OFFENDER_REF_SECRET: ${OFFENDER_REF_SECRET:-change-me-in-production}
+      REQUIRE_HTTPS: ${REQUIRE_HTTPS:-0}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      INSTITUTIONS: ${INSTITUTIONS:-[{"id":"galgotias","name":"Galgotias College","domain":"galgotiacollege.edu.in"}]}
+      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
+      REPORT_SPIKE_THRESHOLD: ${REPORT_SPIKE_THRESHOLD:-10}
+      ALERT_COOLDOWN_MS: ${ALERT_COOLDOWN_MS:-900000}
+      RETENTION_REPORT_DAYS: ${RETENTION_REPORT_DAYS:-90}
+      RETENTION_AUDIT_DAYS: ${RETENTION_AUDIT_DAYS:-365}
+      RETENTION_FEEDBACK_DAYS: ${RETENTION_FEEDBACK_DAYS:-180}
+      OBSERVABILITY_WINDOW_MS: ${OBSERVABILITY_WINDOW_MS:-60000}
+      ERROR_RATE_ALERT: ${ERROR_RATE_ALERT:-0.10}
+      HTTP_P95_ALERT_MS: ${HTTP_P95_ALERT_MS:-1500}
+      EVENT_LOOP_P99_ALERT_MS: ${EVENT_LOOP_P99_ALERT_MS:-250}
+      OIDC_ENABLED: ${OIDC_ENABLED:-0}
+      OIDC_ISSUER: ${OIDC_ISSUER:-https://accounts.google.com}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      OIDC_POST_LOGIN_REDIRECT: ${OIDC_POST_LOGIN_REDIRECT:-}
+      OIDC_STATE_SECRET: ${OIDC_STATE_SECRET:-}
+      OIDC_ALLOWED_DOMAINS: ${OIDC_ALLOWED_DOMAINS:-}
+      OIDC_SCOPE: ${OIDC_SCOPE:-openid email profile}
+      OIDC_MAX_AGE_SECONDS: ${OIDC_MAX_AGE_SECONDS:-600}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: maskchat
+      POSTGRES_USER: maskchat
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maskchat -d maskchat"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  postgres-data:
