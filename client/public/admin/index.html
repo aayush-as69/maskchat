@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MaskChat · Moderator review</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #0b0b0b; color: #f2f2f2; }
+  header { padding: 20px 28px; border-bottom: 1px solid #262626; display: flex; align-items: center; justify-content: space-between; }
+  h1 { font-size: 18px; margin: 0; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 28px 80px; }
+  .token-form { display: flex; gap: 8px; margin-bottom: 24px; }
+  input[type="password"], input[type="text"] { flex: 1; padding: 10px 12px; background: #171717; border: 1px solid #2e2e2e; color: #f2f2f2; border-radius: 6px; }
+  button { padding: 10px 16px; border-radius: 6px; border: 0; background: #0b7b9e; color: #fff; font-weight: 600; cursor: pointer; }
+  button:hover { background: #0e91b9; }
+  button.ghost { background: transparent; border: 1px solid #3a3a3a; color: #f2f2f2; }
+  button.danger { background: #a84c4c; }
+  .status { font-size: 13px; color: #a7a7a7; margin-bottom: 16px; min-height: 18px; }
+  .report { border: 1px solid #262626; border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; background: #121212; }
+  .report.resolved { opacity: 0.55; }
+  .report-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .reason { display: inline-block; background: rgba(216,109,109,.18); border: 1px solid rgba(216,109,109,.4); color: #e69b9b; font-size: 11px; padding: 3px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: .04em; }
+  .meta { font-size: 12px; color: #8a8a8a; margin-top: 6px; }
+  .details { margin: 10px 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+  .transcript { background: #0d0d0d; border: 1px solid #262626; border-radius: 8px; padding: 10px 12px; margin-top: 10px; max-height: 220px; overflow-y: auto; }
+  .transcript .msg { font-size: 12px; margin-bottom: 6px; }
+  .transcript .msg b { color: #0b7b9e; }
+  .actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  select { padding: 9px 10px; background:#171717; border:1px solid #2e2e2e; color:#f2f2f2; border-radius:6px; }
+  .empty { color: #8a8a8a; text-align: center; padding: 60px 0; }
+  nav a { color: #7fd0e8; text-decoration: none; font-size: 13px; margin-left: 14px; }
+  nav a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MaskChat — Moderator review</h1>
+  <nav><a href="/admin/dashboard.html">Dashboard</a><a href="/admin/">Reports</a><a href="/admin/metrics.html">Metrics</a></nav>
+</header>
+<main>
+  <div class="token-form">
+    <input id="tokenInput" type="password" placeholder="Admin token" autocomplete="off" />
+    <button id="connectBtn">Connect</button>
+    <button id="refreshBtn" class="ghost">Refresh</button>
+  </div>
+  <div class="status" id="statusLine">Enter the ADMIN_TOKEN configured on the server to view reports.</div>
+  <div id="reportList"></div>
+</main>
+<script>
+  const tokenInput = document.getElementById('tokenInput');
+  const statusLine = document.getElementById('statusLine');
+  const reportList = document.getElementById('reportList');
+
+  const saved = sessionStorage.getItem('maskchat-admin-token');
+  if (saved) tokenInput.value = saved;
+
+  function reasonLabel(reason) {
+    return {
+      harassment: 'Harassment',
+      inappropriate_content: 'Inappropriate content',
+      safety_concern: 'Safety concern',
+      spam: 'Spam',
+      other: 'Other'
+    }[reason] || reason;
+  }
+
+  async function apiRequest(path, options = {}) {
+    const token = tokenInput.value.trim();
+    const response = await fetch(path, {
+      ...options,
+      headers: { ...(options.headers || {}), 'x-admin-token': token, 'Content-Type': 'application/json' }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || `Request failed (${response.status})`);
+    return data;
+  }
+
+  function renderReports(reports) {
+    if (!reports.length) {
+      reportList.innerHTML = '<div class="empty">No reports on file.</div>';
+      return;
+    }
+    reportList.innerHTML = reports.map((report) => `
+      <div class="report ${report.status === 'resolved' ? 'resolved' : ''}" data-id="${report.id}">
+        <div class="report-top">
+          <span class="reason">${reasonLabel(report.reason)}</span>
+          <span class="meta">${new Date(report.createdAt).toLocaleString()} · ${report.status}</span>
+        </div>
+        <div class="meta">Reporter: <b>${escapeHtml(report.reporterAlias)}</b> &middot; Reported: <b>${escapeHtml(report.reportedAlias)}</b> &middot; ${(report.otherAliases || []).length > 1 ? `Others in room: ${report.otherAliases.map(escapeHtml).join(', ')} &middot; ` : ''} Institution: <b>${escapeHtml(report.institutionName || 'Unknown')}</b> &middot; Tags: ${(report.tags || []).map(escapeHtml).join(', ') || '—'}</div>
+        ${report.details ? `<div class="details">${escapeHtml(report.details)}</div>` : '<div class="details" style="color:#666">No additional details provided.</div>'}
+        ${report.messages && report.messages.length ? `<div class="transcript">${report.messages.map((m) => `<div class="msg"><b>${escapeHtml(m.sender)}:</b> ${escapeHtml(m.text)}</div>`).join('')}</div>` : ''}
+        <div class="actions">
+          <select class="status-select" data-id="${report.id}"><option value="open" ${report.status === 'open' ? 'selected' : ''}>Open</option><option value="in_review" ${report.status === 'in_review' ? 'selected' : ''}>In review</option><option value="resolved" ${report.status === 'resolved' ? 'selected' : ''}>Resolved</option></select>
+          <input class="assignee" data-id="${report.id}" type="text" placeholder="Assign moderator" value="${escapeHtml(report.assignedTo || '')}" />
+          <button class="ghost status-btn" data-id="${report.id}">Save status</button>
+          ${report.reportedIdentityKey ? `<button class="danger ban-btn" data-identity="${report.reportedIdentityKey}">Ban identity</button>` : ''}
+          <button class="danger delete-btn" data-id="${report.id}">Delete</button>
+        </div>
+      </div>
+    `).join('');
+
+    reportList.querySelectorAll('.status-btn').forEach((btn) => btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const status = reportList.querySelector(`.status-select[data-id=\"${id}\"]`).value;
+      const assignedTo = reportList.querySelector(`.assignee[data-id=\"${id}\"]`).value;
+      await apiRequest(`/api/admin/reports/${id}/status`, { method: 'POST', body: JSON.stringify({ status, assignedTo }) });
+      loadReports();
+    }));
+    reportList.querySelectorAll('.ban-btn').forEach((btn) => btn.addEventListener('click', async () => {
+      if (!confirm('Apply a temporary 24-hour ban to this stable identity?')) return;
+      await apiRequest(`/api/admin/identity/${btn.dataset.identity}/ban`, { method: 'POST', body: JSON.stringify({ type: 'temporary', durationMs: 24 * 60 * 60 * 1000, reason: 'Moderator action from report review' }) });
+      statusLine.textContent = 'Temporary ban applied.';
+    }));
+    reportList.querySelectorAll('.delete-btn').forEach((btn) => btn.addEventListener('click', async () => {
+      if (!confirm('Delete this report permanently?')) return;
+      await apiRequest(`/api/admin/reports/${btn.dataset.id}`, { method: 'DELETE' });
+      loadReports();
+    }));
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  async function loadReports() {
+    try {
+      statusLine.textContent = 'Loading…';
+      const data = await apiRequest('/api/admin/reports');
+      sessionStorage.setItem('maskchat-admin-token', tokenInput.value.trim());
+      statusLine.textContent = `${data.reports.length} report(s) on file. Reports live only in this server's memory and are lost on restart.`;
+      renderReports(data.reports);
+    } catch (error) {
+      statusLine.textContent = error.message;
+      reportList.innerHTML = '';
+    }
+  }
+
+  document.getElementById('connectBtn').addEventListener('click', loadReports);
+  document.getElementById('refreshBtn').addEventListener('click', loadReports);
+  tokenInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') loadReports(); });
+
+  if (saved) loadReports();
+</script>
+</body>
+</html>

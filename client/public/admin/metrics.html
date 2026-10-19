@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MaskChat · Metrics</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #0b0b0b; color: #f2f2f2; }
+  header { padding: 20px 28px; border-bottom: 1px solid #262626; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; }
+  nav a { color: #7fd0e8; text-decoration: none; font-size: 13px; margin-left: 14px; }
+  nav a:hover { text-decoration: underline; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 28px 80px; }
+  .token-form { display: flex; gap: 8px; margin-bottom: 24px; }
+  input[type="password"] { flex: 1; padding: 10px 12px; background: #171717; border: 1px solid #2e2e2e; color: #f2f2f2; border-radius: 6px; }
+  button { padding: 10px 16px; border-radius: 6px; border: 0; background: #0b7b9e; color: #fff; font-weight: 600; cursor: pointer; }
+  button:hover { background: #0e91b9; }
+  button.ghost { background: transparent; border: 1px solid #3a3a3a; color: #f2f2f2; }
+  .status { font-size: 13px; color: #a7a7a7; margin-bottom: 16px; min-height: 18px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 22px; }
+  .card { border: 1px solid #262626; border-radius: 10px; padding: 16px 18px; background: #121212; }
+  .card .label { font-size: 12px; color: #8a8a8a; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+  .card .value { font-size: 26px; font-weight: 700; }
+  .card .sub { font-size: 12px; color: #8a8a8a; margin-top: 4px; }
+  .section-title { font-size: 13px; color: #8a8a8a; text-transform: uppercase; letter-spacing: .04em; margin: 26px 0 10px; }
+  .empty { color: #8a8a8a; text-align: center; padding: 60px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MaskChat — Metrics</h1>
+  <nav><a href="/admin/dashboard.html">Dashboard</a><a href="/admin/">Reports</a><a href="/admin/metrics.html">Metrics</a></nav>
+</header>
+<main>
+  <div class="token-form">
+    <input id="tokenInput" type="password" placeholder="Admin token" autocomplete="off" />
+    <button id="connectBtn">Connect</button>
+    <button id="refreshBtn" class="ghost">Refresh</button>
+  </div>
+  <div class="status" id="statusLine">Enter the ADMIN_TOKEN configured on the server to view live metrics. Auto-refreshes every 5s once connected.</div>
+  <div id="body"></div>
+</main>
+<script>
+  const tokenInput = document.getElementById('tokenInput');
+  const statusLine = document.getElementById('statusLine');
+  const body = document.getElementById('body');
+  let timer = null;
+
+  const saved = sessionStorage.getItem('maskchat-admin-token');
+  if (saved) tokenInput.value = saved;
+
+  function pct(value) {
+    return value === null || value === undefined ? '—' : `${Math.round(value * 100)}%`;
+  }
+
+  function card(label, value, sub) {
+    return `<div class="card"><div class="label">${label}</div><div class="value">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
+  }
+
+  function render(m) {
+    body.innerHTML = `
+      <div class="section-title">Connections &amp; uptime</div>
+      <div class="grid">
+        ${card('Connected now', m.connections.current, 'this instance')}
+        ${card('Total connections', m.connections.totalSinceStart, 'since process start')}
+        ${card('Uptime', formatUptime(m.uptimeSeconds))}
+        ${card('Storage', m.storage)}
+      </div>
+      <div class="section-title">Matching</div>
+      <div class="grid">
+        ${card('Match success rate', pct(m.matching.successRate), `${m.matching.succeeded} of ${m.matching.attempted} requests`)}
+        ${card('Currently queued (cumulative)', m.matching.queued, 'times a seeker had to wait')}
+        ${card('Matches made', m.matching.succeeded)}
+      </div>
+      <div class="section-title">Content filter &amp; moderation</div>
+      <div class="grid">
+        ${card('Block-filter hit rate', pct(m.messages.blockRate), `${m.messages.blocked} of ${m.messages.sent + m.messages.blocked} messages`)}
+        ${card('Messages sent', m.messages.sent)}
+        ${card('Violations recorded', m.moderation.violationsRecorded)}
+        ${card('Cooldowns applied', m.moderation.cooldownsApplied)}
+        ${card('Reports filed', m.moderation.reportsFiled)}
+        ${card('Demo sessions started', m.demoSessionsStarted)}
+      </div>
+    `;
+  }
+
+  function formatUptime(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h}h ${m}m ${s}s`;
+  }
+
+  async function loadMetrics() {
+    const token = tokenInput.value.trim();
+    try {
+      const response = await fetch('/api/metrics', { headers: { 'x-admin-token': token } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || `Request failed (${response.status})`);
+      sessionStorage.setItem('maskchat-admin-token', token);
+      statusLine.textContent = `Live — last updated ${new Date().toLocaleTimeString()}. Aggregate counts only, never message content.`;
+      render(data);
+    } catch (error) {
+      statusLine.textContent = error.message;
+      body.innerHTML = '<div class="empty">No metrics to show.</div>';
+    }
+  }
+
+  function startPolling() {
+    loadMetrics();
+    if (timer) clearInterval(timer);
+    timer = setInterval(loadMetrics, 5000);
+  }
+
+  document.getElementById('connectBtn').addEventListener('click', startPolling);
+  document.getElementById('refreshBtn').addEventListener('click', loadMetrics);
+  tokenInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') startPolling(); });
+
+  if (saved) startPolling();
+</script>
+</body>
+</html>
